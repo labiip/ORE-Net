@@ -29,8 +29,7 @@ If needed, please contact: [Lin Zhang](mailto:lin.zhang@cumt.edu.cn).
 
 ### Pre-trained Models
 
-We provide the pre-trained model in the `pretrain` directory:  
-- `pretrain/tooth.pth.rar`
+we provide pre-trained models in [Baidu Netdisk](https://pan.baidu.com/s/1018Fcl58mo4FwUKl_ubwhA?pwd=fbxp). Please download the latest weights and put them in `pretain` directory.
 
 ## Demo
 After installation, you can run the demo script in `experiments/Tooth` by:
@@ -55,7 +54,7 @@ For example,
 CUDA_VISIBLE_DEVICES=0,1 python -m torch.distributed.launch --nproc_per_node=2 trainval.py
 ```
 
-## ⛳ Testing
+## Testing
 To test a pre-trained models on Tooth, use the following commands:
 ```bash
 # Tooth
