@@ -1,0 +1,13 @@
+numpy
+scipy
+tqdm
+coloredlogs
+easydict
+nibabel
+open3d==0.10.0.0
+scikit-learn
+einops
+ipdb
+tensorboard
+tensorboardX
+wandb
