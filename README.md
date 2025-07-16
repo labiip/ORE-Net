@@ -64,7 +64,7 @@ python test.py --benchmark Tooth --snapshot ../../pretrain/tooth.pth.tar
 ## Citation
 
 ```bibtex
-@inproceedings{yao2024parenet,
+@inproceedings{
     title={ORE-Net: Overlapping-aware and Rotation-Equivariant Network for CBCT-IOS Point Cloud Registration},
     author={Lin Zhang and Kaiyue Bi and Yaodong Chen and Fucheng Niu and Zekuan Yu and Zhongwei Zhou and Hui Liu},
     year={2025}
