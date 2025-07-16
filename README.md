@@ -27,16 +27,14 @@ python setup.py install
 
 If needed, please contact: [Lin Zhang](mailto:lin.zhang@cumt.edu.cn).
 
-### Pre-trained Models
-
-we provide pre-trained models in [Baidu Netdisk](https://pan.baidu.com/s/1018Fcl58mo4FwUKl_ubwhA?pwd=fbxp). Please download the latest weights and put them in `pretain` directory.
-
 ## Demo
 After installation, you can run the demo script in `experiments/Tooth` by:
 ```bash
-cd experiments/3DMatch
+cd experiments/Tooth
 python demo.py
 ```
+Note: Pre-trained weights are required to run the demo.
+Please contact the author to obtain the pre-trained weights.
 
 ## Training
 You can train a model by the following commands:
@@ -58,17 +56,7 @@ CUDA_VISIBLE_DEVICES=0,1 python -m torch.distributed.launch --nproc_per_node=2 t
 To test a pre-trained models on Tooth, use the following commands:
 ```bash
 # Tooth
-python test.py --benchmark Tooth --snapshot ../../pretrain/tooth.pth.tar
-```
-
-## Citation
-
-```bibtex
-@inproceedings{
-    title={ORE-Net: Overlapping-aware and Rotation-Equivariant Network for CBCT-IOS Point Cloud Registration},
-    author={Lin Zhang and Kaiyue Bi and Yaodong Chen and Fucheng Niu and Zekuan Yu and Zhongwei Zhou and Hui Liu},
-    year={2025}
-}
+python test.py --benchmark Tooth --snapshot path/to/your_weights.pth.tar
 ```
 
 ## Acknowledgements
