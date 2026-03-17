@@ -11,3 +11,8 @@ ipdb
 tensorboard
 tensorboardX
 wandb
+h5py
+transforms3d
+timm
+pandas
+ninja

@@ -1,7 +1,7 @@
 import importlib
 
 
-ext_module = importlib.import_module('pareconv.ext')
+ext_module = importlib.import_module('areconv.ext')
 
 
 def grid_subsample(points, lengths, voxel_size):

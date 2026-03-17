@@ -4,7 +4,7 @@ import argparse
 
 from easydict import EasyDict as edict
 
-from pareconv.utils.common import ensure_dir
+from areconv.utils.common import ensure_dir
 
 
 _C = edict()
@@ -32,7 +32,8 @@ ensure_dir(_C.registration_dir)
 
 # data
 _C.data = edict()
-_C.data.dataset_root = ''
+_C.data.dataset_root = '/home/kaiyue.bi/00Data/Tooth_Registration_Dataset/'
+# _C.data.dataset_root = '/home/kaiyue.bi/00Data/overlap/'
 
 # train data
 _C.train = edict()

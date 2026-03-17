@@ -4,13 +4,15 @@ import torch.nn as nn
 
 from areconv.modules.loss import WeightedCircleLoss
 from areconv.modules.ops.transformation import apply_transform
-from areconv.modules.registration.metrics import isotropic_transform_error, relative_rotation_error, anisotropic_transform_error
+from areconv.modules.registration.metrics import isotropic_transform_error, relative_rotation_error, \
+    anisotropic_transform_error
 from areconv.modules.ops.pairwise_distance import pairwise_distance
 import pandas as pd
 from datetime import datetime
 import os
 import open3d as o3d
 import numpy as np
+
 
 class CoarseMatchingLoss(nn.Module):
     def __init__(self, cfg):
@@ -44,19 +46,25 @@ class CoarseMatchingLoss(nn.Module):
 
         return loss
 
-class FineMatchingLoss(nn.Module):
+
+class FineMatchingLoss(nn.Module):  # for fine dual matching
     def __init__(self, cfg):
         super(FineMatchingLoss, self).__init__()
         self.positive_radius = cfg.fine_loss.positive_radius
+        self.negative_radius = cfg.fine_loss.negative_radius
+        self.positive_margin = cfg.fine_loss.positive_margin
+        self.negative_margin = cfg.fine_loss.negative_margin
 
     def forward(self, output_dict, data_dict):
         ref_node_corr_knn_points = output_dict['ref_node_corr_knn_points']
         src_node_corr_knn_points = output_dict['src_node_corr_knn_points']
         ref_node_corr_knn_masks = output_dict['ref_node_corr_knn_masks']
         src_node_corr_knn_masks = output_dict['src_node_corr_knn_masks']
+        ref_node_corr_knn_scores = output_dict['ref_node_corr_knn_scores']
+        src_node_corr_knn_scores = output_dict['src_node_corr_knn_scores']
+
         matching_scores = output_dict['matching_scores']
         transform = data_dict['transform']
-
         src_node_corr_knn_points = apply_transform(src_node_corr_knn_points, transform)
         dists = pairwise_distance(ref_node_corr_knn_points, src_node_corr_knn_points)  # (B, N, M)
         gt_masks = torch.logical_and(ref_node_corr_knn_masks.unsqueeze(2), src_node_corr_knn_masks.unsqueeze(1))
@@ -65,33 +73,58 @@ class FineMatchingLoss(nn.Module):
         slack_row_labels = torch.logical_and(torch.eq(gt_corr_map.sum(2), 0), ref_node_corr_knn_masks)
         slack_col_labels = torch.logical_and(torch.eq(gt_corr_map.sum(1), 0), src_node_corr_knn_masks)
 
-        labels = torch.zeros_like(matching_scores, dtype=torch.bool)
+        # compute matching loss of rotation invariant features
+        fine_ri_loss = - (matching_scores[gt_corr_map].log().mean()
+                          + 0.5 * (1 - ref_node_corr_knn_scores)[slack_row_labels].log().mean()
+                          + 0.5 * (1 - src_node_corr_knn_scores)[slack_col_labels].log().mean())
 
-        labels[:, :-1, :-1] = gt_corr_map
-        labels[:, :-1, -1] = slack_row_labels
-        labels[:, -1, :-1] = slack_col_labels
+        # compute loss of rotation equivariant features
+        neg_map = torch.gt(dists, self.negative_radius ** 2)
+        neg_map = torch.logical_and(neg_map, gt_masks)
+        fine_re_loss = self.fine_re_loss(output_dict, gt_corr_map, neg_map, transform)
 
-        loss = -matching_scores[labels].mean()
+        return fine_ri_loss, fine_re_loss
 
-        return loss
+    def fine_re_loss(self, out_dict, gt_corr_map, neg_map, gt_trans):
+        ref_feats = out_dict['re_ref_node_corr_knn_feats']
+        src_feats = out_dict['re_src_node_corr_knn_feats']
+        batch_indices, ref_indices, src_indices = torch.nonzero(gt_corr_map, as_tuple=True)
+        if batch_indices.shape[0] == 0:
+            return torch.tensor(0.0, device=ref_feats.device)
+        ref_feats_rot = ref_feats[batch_indices, ref_indices]
+        src_feats_rot = src_feats[batch_indices, src_indices]
+        src_feats_rot = torch.einsum('bck, lk -> bcl', src_feats_rot, gt_trans[:3, :3])
+        pos_loss = torch.relu(torch.norm(src_feats_rot - ref_feats_rot, 2, -1) - self.positive_margin).mean()
+
+        batch_indices, ref_indices, src_indices = torch.nonzero(neg_map, as_tuple=True)
+        ref_feats_rot = ref_feats[batch_indices, ref_indices]
+        src_feats_rot = src_feats[batch_indices, src_indices]
+        src_feats_rot = torch.einsum('bck, lk -> bcl', src_feats_rot, gt_trans[:3, :3])
+        neg_loss = torch.relu(self.negative_margin - torch.norm(src_feats_rot - ref_feats_rot, 2, -1)).mean()
+        re_loss = pos_loss + neg_loss
+        return re_loss
+
 
 class OverallLoss(nn.Module):
     def __init__(self, cfg):
         super(OverallLoss, self).__init__()
         self.coarse_loss = CoarseMatchingLoss(cfg)
         self.fine_loss = FineMatchingLoss(cfg)
+        self.weight_coarse_loss = cfg.loss.weight_coarse_loss
+        self.weight_fine_ri_loss = cfg.loss.weight_fine_ri_loss
+        self.weight_fine_re_loss = cfg.loss.weight_fine_re_loss
 
     def forward(self, output_dict, data_dict):
         coarse_loss = self.coarse_loss(output_dict)
-        fine_loss = self.fine_loss(output_dict, data_dict)
-
-        loss =  coarse_loss +  fine_loss
-
+        fine_ri_loss, fine_re_loss = self.fine_loss(output_dict, data_dict)
+        loss = self.weight_coarse_loss * coarse_loss + self.weight_fine_ri_loss * fine_ri_loss + self.weight_fine_re_loss * fine_re_loss
         return {
             'loss': loss,
             'c_loss': coarse_loss,
-            'f_loss': fine_loss,
+            'f_ri_loss': fine_ri_loss,
+            'f_re_loss': fine_re_loss,
         }
+
 
 class Evaluator(nn.Module):
     def __init__(self, cfg):
@@ -145,7 +178,7 @@ class Evaluator(nn.Module):
         mask = torch.lt(corr_distances, self.acceptance_radius)
         precision = mask.float().mean()
         return precision
-    
+
     @torch.no_grad()
     def evaluate_registration(self, output_dict, data_dict):
         transform = data_dict['transform']
@@ -162,7 +195,14 @@ class Evaluator(nn.Module):
         est_src_points = apply_transform(src_points, est_transform)
         rmse = torch.linalg.norm(realigned_src_points_f - src_points, dim=1).mean()
         recall = torch.logical_and(torch.lt(rre, self.acceptance_rre), torch.lt(rte, self.acceptance_rte)).float()
-        
+
+        #保存点云文件
+        # self.save_point_cloud(ref_points, "ref_points", f"{self.counter}.pcd")
+        # self.save_point_cloud(src_points, "src_points", f"{self.counter}.pcd")
+        # self.save_point_cloud(est_src_points, "est_src_points", f"{self.counter}.pcd")
+        # self.save_point_cloud(gt_src_points, "gt_src_points", f"{self.counter}.pcd")
+        # self.counter += 1
+
         return rre, rte, rmse, recall, r_mse, r_mae, t_mse, t_mae
 
     def forward(self, output_dict, data_dict):

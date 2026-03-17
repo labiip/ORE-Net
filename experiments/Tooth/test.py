@@ -18,7 +18,7 @@ from loss import Evaluator
 
 def make_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--benchmark', default='3DMatch', choices=['3DMatch', '3DLoMatch', 'val'], help='test benchmark')
+    parser.add_argument('--benchmark', default='Tooth', choices=['Tooth', 'val'], help='test benchmark')
     return parser
 
 
@@ -62,43 +62,8 @@ class Tester(SingleTester):
         return result_dict
 
     def summary_string(self, iteration, data_dict, output_dict, result_dict):
-        # scene_name = data_dict['scene_name']
-        # ref_frame = data_dict['ref_frame']
-        # src_frame = data_dict['src_frame']
-        # message = f'{scene_name}, id0: {ref_frame}, id1: {src_frame}'
         message = get_log_string(result_dict=result_dict)
         return message
-
-    # def after_test_step(self, iteration, data_dict, output_dict, result_dict):
-    #     scene_name = data_dict['scene_name']
-    #     ref_id = data_dict['ref_frame']
-    #     src_id = data_dict['src_frame']
-
-    #     ensure_dir(osp.join(self.output_dir, scene_name))
-    #     file_name = osp.join(self.output_dir, scene_name, f'{ref_id}_{src_id}.npz')
-
-    #     np.savez_compressed(
-    #         file_name,
-    #         ref_points=release_cuda(output_dict['ref_points']),
-    #         src_points=release_cuda(output_dict['src_points']),
-    #         ref_points_f=release_cuda(output_dict['ref_points_f']),
-    #         src_points_f=release_cuda(output_dict['src_points_f']),
-    #         ref_points_c=release_cuda(output_dict['ref_points_c']),
-    #         src_points_c=release_cuda(output_dict['src_points_c']),
-    #         ref_feats_c=release_cuda(output_dict['ref_feats_c']),
-    #         src_feats_c=release_cuda(output_dict['src_feats_c']),
-    #         ref_node_corr_indices=release_cuda(output_dict['ref_node_corr_indices']),
-    #         src_node_corr_indices=release_cuda(output_dict['src_node_corr_indices']),
-    #         ref_corr_points=release_cuda(output_dict['ref_corr_points']),
-    #         src_corr_points=release_cuda(output_dict['src_corr_points']),
-    #         corr_scores=release_cuda(output_dict['corr_scores']),
-    #         gt_node_corr_indices=release_cuda(output_dict['gt_node_corr_indices']),
-    #         gt_node_corr_overlaps=release_cuda(output_dict['gt_node_corr_overlaps']),
-    #         estimated_transform=release_cuda(output_dict['estimated_transform']),
-    #         transform=release_cuda(data_dict['transform']),
-    #         overlap=data_dict['overlap'],
-    #     )
-
 
 
 def main():

@@ -3,14 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from areconv.modules.ops import point_to_node_partition, index_select
 from areconv.modules.registration import get_node_correspondences
-from areconv.modules.sinkhorn import LearnableLogOptimalTransport
+from areconv.modules.dual_matching import PointDualMatching
 
 from areconv.modules.geotransformer import (
     Transformer,
     SuperPointMatching,
     SuperPointTargetGenerator,
-    LocalGlobalRegistration,
 )
+from areconv.modules.registration import HypothesisProposer
 
 from backbone import AREConvFPN
 
@@ -51,19 +51,15 @@ class ARE_Net(nn.Module):
             cfg.coarse_matching.num_correspondences, cfg.coarse_matching.dual_normalization
         )
 
-        self.fine_matching = LocalGlobalRegistration(
+        self.fine_matching = HypothesisProposer(
             cfg.fine_matching.topk,
             cfg.fine_matching.acceptance_radius,
-            mutual=cfg.fine_matching.mutual,
             confidence_threshold=cfg.fine_matching.confidence_threshold,
-            use_dustbin=cfg.fine_matching.use_dustbin,
-            use_global_score=cfg.fine_matching.use_global_score,
-            correspondence_threshold=cfg.fine_matching.correspondence_threshold,
-            correspondence_limit=cfg.fine_matching.correspondence_limit,
+            num_hypotheses=cfg.fine_matching.num_hypotheses,
             num_refinement_steps=cfg.fine_matching.num_refinement_steps,
         )
 
-        self.optimal_transport = LearnableLogOptimalTransport(cfg.model.num_sinkhorn_iterations)
+        self.point_matching = PointDualMatching(dim=cfg.backbone.output_dim // 3 * 3)
 
     def forward(self, data_dict):
         output_dict = {}
@@ -201,31 +197,41 @@ class ARE_Net(nn.Module):
         output_dict['ref_node_corr_knn_masks'] = ref_node_corr_knn_masks
         output_dict['src_node_corr_knn_masks'] = src_node_corr_knn_masks
 
-        # 8. Optimal transport
-        matching_scores = torch.einsum('bnd,bmd->bnm', ref_node_corr_knn_feats, src_node_corr_knn_feats)  # (P, K, K)
-        matching_scores = matching_scores / feats_f.shape[1] ** 0.5
-        matching_scores = self.optimal_transport(matching_scores, ref_node_corr_knn_masks, src_node_corr_knn_masks)
+        re_ref_padded_feats_f = torch.cat([re_ref_feats_f, torch.zeros_like(re_ref_feats_f[:1])], dim=0)
+        re_src_padded_feats_f = torch.cat([re_src_feats_f, torch.zeros_like(re_src_feats_f[:1])], dim=0)
+        re_ref_node_corr_knn_feats = index_select(re_ref_padded_feats_f, ref_node_corr_knn_indices, dim=0)  # (P, K, C)
+        re_src_node_corr_knn_feats = index_select(re_src_padded_feats_f, src_node_corr_knn_indices, dim=0)  # (P, K, C)
 
-        output_dict['matching_scores'] = matching_scores
+        output_dict['re_ref_node_corr_knn_feats'] = re_ref_node_corr_knn_feats   # 256 64 21 3
+        output_dict['re_src_node_corr_knn_feats'] = re_src_node_corr_knn_feats
 
-        # 9. Generate final correspondences during testing
+        # 7 Match batched points
+        matching_scores = self.point_matching(ref_node_corr_knn_feats, src_node_corr_knn_feats, ref_node_corr_knn_scores, src_node_corr_knn_scores, ref_node_corr_knn_masks, src_node_corr_knn_masks)
+
+        output_dict['matching_scores'] = matching_scores   # 256 64 64
+        output_dict['ref_node_corr_knn_scores'] = ref_node_corr_knn_scores
+        output_dict['src_node_corr_knn_scores'] = src_node_corr_knn_scores
+
+        # 8 Generate hypotheses and select the best one
         with torch.no_grad():
-            if not self.fine_matching.use_dustbin:
-                matching_scores = matching_scores[:, :-1, :-1]
-
-            ref_corr_points, src_corr_points, corr_scores, estimated_transform = self.fine_matching(
+            ref_corr_points, src_corr_points, corr_scores, estimated_transform, hypotheses, re_ref_corr_feats, re_src_corr_feats, = self.fine_matching(
                 ref_node_corr_knn_points,
                 src_node_corr_knn_points,
+                re_ref_node_corr_knn_feats,
+                re_src_node_corr_knn_feats,
                 ref_node_corr_knn_masks,
                 src_node_corr_knn_masks,
                 matching_scores,
-                node_corr_scores,
             )
 
-            output_dict['ref_corr_points'] = ref_corr_points
-            output_dict['src_corr_points'] = src_corr_points
-            output_dict['corr_scores'] = corr_scores
-            output_dict['estimated_transform'] = estimated_transform
+        output_dict['re_ref_corr_feats'] = re_ref_corr_feats
+        output_dict['re_src_corr_feats'] = re_src_corr_feats
+        output_dict['hypotheses'] = hypotheses
+        output_dict['ref_corr_points'] = ref_corr_points
+        output_dict['src_corr_points'] = src_corr_points
+        output_dict['corr_scores'] = corr_scores
+        output_dict['estimated_transform'] = estimated_transform
+        output_dict['transform'] = transform
 
         return output_dict
 

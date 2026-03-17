@@ -27,14 +27,22 @@ python setup.py install
 
 If needed, please contact: [Lin Zhang](mailto:lin.zhang@cumt.edu.cn).
 
-## Demo
-After installation, you can run the demo script in `experiments/Tooth` by:
-```bash
-cd experiments/Tooth
-python demo.py
-```
-Note: Pre-trained weights are required to run the demo.
-Please contact the author to obtain the pre-trained weights.
+### Pre-trained Models
+
+We provide the pre-trained model in the `pretrain` directory:  
+- `pretrain/tooth.pth.rar`
+
+🔍 Overlapping Region Detection (ORPModule)
+
+Before registration, you need to detect the overlapping regions between two point clouds.
+This can be done in the experiments/ORPModule directory:
+
+Run the "main.py" for training and "test.py" for inference and save results
+This step will obtain the overlapping regions of two point clouds.
+
+👉 The overlapping regions obtained here will then be used as input for the subsequent registration stage (in experiments/Tooth).
+
+🦷 Registration (Tooth)
 
 ## Training
 You can train a model by the following commands:
@@ -52,11 +60,21 @@ For example,
 CUDA_VISIBLE_DEVICES=0,1 python -m torch.distributed.launch --nproc_per_node=2 trainval.py
 ```
 
-## Testing
+## ⛳ Testing
 To test a pre-trained models on Tooth, use the following commands:
 ```bash
 # Tooth
-python test.py --benchmark Tooth --snapshot path/to/your_weights.pth.tar
+python test.py --benchmark Tooth --snapshot ../../pretrain/tooth.pth.tar
+```
+
+## Citation
+
+```bibtex
+@inproceedings{yao2024parenet,
+    title={ORE-Net: Overlapping-aware and Rotation-Equivariant Network for CBCT-IOS Point Cloud Registration},
+    author={Lin Zhang and Kaiyue Bi and Yaodong Chen and Fucheng Niu and Zekuan Yu and Zhongwei Zhou and Hui Liu},
+    year={2025}
+}
 ```
 
 ## Acknowledgements
